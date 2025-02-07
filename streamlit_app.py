@@ -119,7 +119,7 @@ if st.button("Codificar y visualizar Trellis"):
     draw_trellis_animated(bits)
 
 
-import streamlit as st
+
 
 
 
