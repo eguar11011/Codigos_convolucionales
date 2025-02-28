@@ -1,4 +1,6 @@
 import streamlit as st
+import numpy as np
+import matplotlib.pyplot as plt
 
 ##########################
 # Función de Codificación
@@ -64,6 +66,68 @@ def viterbi_decode(coded_bits, poly1="111", poly2="101"):
     best_state = min(metric_prev, key=lambda s: metric_prev[s][0])
     return "".join(map(str, metric_prev[best_state][1]))
 
+
+
+def draw_trellis(bits, g1, g2):
+    import matplotlib.pyplot as plt
+    import streamlit as st
+    
+    encoded_bits = convolutional_encode(bits, g1, g2)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    states = ['00', '01', '10', '11']
+    n_steps = len(bits) + 1
+    state_positions = {state: i for i, state in enumerate(states)}
+
+    for step in range(n_steps):
+        for state in states:
+            ax.scatter(step, state_positions[state], color='black')
+            ax.text(step, state_positions[state], state, fontsize=12, ha='center', va='bottom')
+
+    current_state = '00'
+    path = [(0, state_positions[current_state])]
+    output_symbols = []
+
+    for step, (bit, output) in enumerate(zip(bits, encoded_bits)):
+        next_state_0 = f"0{current_state[0]}"[-2:]
+        next_state_1 = f"1{current_state[0]}"[-2:]
+
+        # Obtener las salidas para las transiciones (0 y 1)
+        output_0 = convolutional_encode([0], g1, g2)[0]
+        output_1 = convolutional_encode([1], g1, g2)[0]
+
+        # Dibujar transiciones posibles
+        ax.annotate(f"{output_0}", ((step + 0.5), (state_positions[next_state_0] + state_positions[current_state]) / 2), color='gray')
+        ax.annotate(f"{output_1}", ((step + 0.5), (state_positions[next_state_1] + state_positions[current_state]) / 2), color='gray')
+
+        ax.plot([step, step + 1], [state_positions[current_state], state_positions[next_state_0]], 'gray', linestyle='--')
+        ax.plot([step, step + 1], [state_positions[current_state], state_positions[next_state_1]], 'gray', linestyle='--')
+
+        next_state = next_state_0 if bit == 0 else next_state_1
+        output_symbols.append(output)
+        path.append((step + 1, state_positions[next_state]))
+        current_state = next_state
+
+    x_coords, y_coords = zip(*path)
+    ax.plot(x_coords, y_coords, marker='o', color='blue', linewidth=2)
+
+    ax.set_xticks(range(n_steps))
+    ax.set_yticks(range(len(states)))
+    ax.set_yticklabels(states)
+    ax.set_xlabel('Pasos')
+    ax.set_ylabel('Estados')
+    ax.grid(True)
+    st.pyplot(fig)
+    
+
+    
+  
+    
+            
+
+
+
+
 ##########################
 # STREAMLIT APP
 ##########################
@@ -73,6 +137,7 @@ def main():
 
     # Campos principales (tal como en la imagen)
     user_bits = st.text_input("Secuencia entrada", "11011")
+    bits = [int(b) for b in user_bits] + [0]
     poly1 = st.text_input("Polinomio G1", "111")
     poly2 = st.text_input("Polinomio G2", "101")
 
@@ -116,6 +181,10 @@ def main():
             st.success("Decodificación correcta (coincide)!")
         else:
             st.warning("La decodificación no coincide con la entrada original.")
+
+ 
+        draw_trellis(bits, poly1, poly2)
+        st.metric("Secuencia codificada:" ,coded)
 
 if __name__ == "__main__":
     main()
