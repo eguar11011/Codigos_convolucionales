@@ -1,134 +1,121 @@
 import streamlit as st
-import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
-import time
 
-def convolutional_encode(bits, g1, g2):
-    """Codifica una secuencia de bits usando un codificador convolucional simple."""
-    state = [0, 0, 0]  # Registro de desplazamiento
-    encoded_bits = []
-    
-    for bit in bits:
-        state.insert(0, bit)
-        state.pop()
-        
-        y1 = state[0] * g1[0] ^ state[1] * g1[1] ^ state[2] * g1[2]
-        y2 = state[0] * g2[0] ^ state[1] * g2[1] ^ state[2] * g2[2]
-        encoded_bits.extend([y1, y2])
-    
-    return encoded_bits
+##########################
+# Función de Codificación
+##########################
+def convolutional_encode(bits, poly1="111", poly2="101"):
+    """
+    Codifica una secuencia de bits usando un código convolucional
+    de tasa 1/2, memoria = 2, polinomios en binario (string).
+    No se aplica flushing.
+    """
+    g1 = [int(b) for b in poly1]
+    g2 = [int(b) for b in poly2]
+    R1, R2 = 0, 0
+    output = []
 
-def draw_trellis_animated(bits):
-    """Dibuja el Trellis con animación, destacando el recorrido de los bits."""
-    G = nx.DiGraph()
-    states = ['00', '01', '10', '11']
-    transitions = {}
-    
-    for state in states:
-        for bit in [0, 1]:
-            new_state = f"{bit}{state[0]}"[:2]
-            G.add_edge(state, new_state, label=str(bit))
-            transitions[(state, bit)] = new_state
-    
-    pos = nx.spring_layout(G, seed=42)
-    labels = nx.get_edge_attributes(G, 'label')
-    
-    fig, ax = plt.subplots(figsize=(6, 4))
-    nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, edge_color='gray', ax=ax)
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, ax=ax)
-    st.pyplot(fig)
-    
-    current_state = '00'
-    path = []
-    for bit in bits:
-        new_state = transitions.get((current_state, bit), '00')
-        path.append((current_state, new_state))
-        current_state = new_state
-        
-        fig, ax = plt.subplots(figsize=(6, 4))
-        nx.draw(G, pos, with_labels=True, node_color='lightblue', node_size=2000, edge_color='gray', ax=ax)
-        nx.draw_networkx_edges(G, pos, edgelist=path, edge_color='red', width=3, ax=ax)
-        nx.draw_networkx_edge_labels(G, pos, edge_labels=labels, ax=ax)
-        st.pyplot(fig)
-        time.sleep(0.5)
+    for b in bits:
+        bit_actual = int(b)
+        y1 = (bit_actual * g1[0]) ^ (R1 * g1[1]) ^ (R2 * g1[2])
+        y2 = (bit_actual * g2[0]) ^ (R1 * g2[1]) ^ (R2 * g2[2])
+        output.extend([str(y1), str(y2)])
+        R2 = R1
+        R1 = bit_actual
 
-# Interfaz en Streamlit
-st.title("Códigos Convolucionales")
-st.write("Un código convolucional introduce redundancia para la corrección de errores en la transmisión de datos.")
+    return "".join(output)
 
-st.header("Fundamentos Matemáticos")
-st.write("""
-Los códigos convolucionales son un tipo de código de corrección de errores que se utilizan ampliamente en comunicaciones digitales y almacenamiento de datos. Su característica principal es que cada bit de salida no depende solo del bit de entrada actual, sino que usa una combinación lineal de los bits de entrada y un conjunto de estados anteriores, lo que permite distribuir la redundancia de forma continua a lo largo de la transmisión.
+##########################
+# Decodificador Viterbi
+##########################
+def viterbi_decode(coded_bits, poly1="111", poly2="101"):
+    """
+    Decodifica los bits codificados usando Viterbi.
+    Asumimos misma configuración: tasa 1/2, memoria=2.
+    """
+    g1 = [int(b) for b in poly1]
+    g2 = [int(b) for b in poly2]
+    states = ['00','01','10','11']
 
-**Parámetros**:
-- **(n, k, m)**:
-  - **k**: Número de bits de entrada por etapa.
-  - **n**: Número de bits de salida por etapa.
-  - **m**: Número de registros de desplazamiento (memoria).
-- Tasa del código :  R = k/n,  indica cuántos bits de entrada se transmiten en relación con los de salida.
- 
-Por ejemplo, para  un código 2,1,2 significa que:
-- Por cada **1 bit de entrada**, se generan **2 bits de salida**.
-- Hay **2 registros de desplazamiento** que almacenan el historial de bits previos.
-""")
-st.write("El proceso de codificación se representa mediante ecuaciones como:")
-st.latex(r"""
-Y_1 = X_t \oplus X_{t-1} \oplus X_{t-2}
-""")
-st.latex(r"""
-Y_2 = X_t \oplus X_{t-2}
-""")
-st.write("Donde \( X_t \) es el bit de entrada actual y \( X_{t-1}, X_{t-2} \) son estados anteriores.")
+    def next_state_output(state, bit_in):
+        R1 = int(state[0])
+        R2 = int(state[1])
+        y1 = (bit_in*g1[0]) ^ (R1*g1[1]) ^ (R2*g1[2])
+        y2 = (bit_in*g2[0]) ^ (R1*g2[1]) ^ (R2*g2[2])
+        new_state = f"{bit_in}{R1}"
+        return new_state, f"{y1}{y2}"
 
-st.header("Aplicaciones de los Códigos Convolucionales")
-st.write("Los códigos convolucionales se utilizan ampliamente en sistemas de comunicación digital y almacenamiento de datos, incluyendo:")
-st.markdown("- **Redes inalámbricas (Wi-Fi, LTE, 5G)**")
-st.markdown("- **Sistemas satelitales y espaciales (NASA, ESA)**")
-st.markdown("- **Transmisión de datos en CD, DVD y discos duros**")
-st.markdown("- **Sistemas de comunicación de voz y video (VoIP, streaming)**")
+    pairs = [coded_bits[i:i+2] for i in range(0,len(coded_bits),2)]
+    INF = float('inf')
+    metric_prev = {s: (0.0 if s == '00' else INF, []) for s in states}
 
-st.header("Ventajas del uso de  Códigos Convolucionales")
-st.write(
-"""
-- Alta capacidad de corrección de errores con algoritmos eficientes.
-- Buena relación entre redundancia y corrección de errores.
-- Implementación eficiente en hardware mediante registros de desplazamiento.
-- Amplio uso en comunicaciones digitales.
-""")
+    for received in pairs:
+        metric_current = {s: (INF, []) for s in states}
+        for s in states:
+            current_metric, current_path = metric_prev[s]
+            for bit_in in [0, 1]:
+                new_s, out = next_state_output(s, bit_in)
+                dist = sum(a != b for a, b in zip(out, received))
+                candidate_metric = current_metric + dist
+                if candidate_metric < metric_current[new_s][0]:
+                    new_path = current_path + [bit_in]
+                    metric_current[new_s] = (candidate_metric, new_path)
+        metric_prev = metric_current
 
+    best_state = min(metric_prev, key=lambda s: metric_prev[s][0])
+    return "".join(map(str, metric_prev[best_state][1]))
 
+##########################
+# STREAMLIT APP
+##########################
+def main():
+    st.set_page_config(page_title="Codificación Convolucional", layout="wide")
+    st.title("Codificación Convolucional y Decodificación Viterbi")
 
-st.header("Representación del Código: Diagrama de Trellis")
-st.write("""
-El diagrama de Trellis es una representación gráfica que muestra cómo evolucionan los estados del codificador a medida que se procesan los bits de entrada,cada nodo representa un estado del registro de desplazamiento y las transiciones ocurren según el bit de entrada.
-""")
+    # Campos principales (tal como en la imagen)
+    user_bits = st.text_input("Secuencia entrada", "11011")
+    poly1 = st.text_input("Polinomio G1", "111")
+    poly2 = st.text_input("Polinomio G2", "101")
 
+    error_sim = st.checkbox("Simular errores")
+    error_pos = st.text_input("Posiciones de error (separadas por coma)", "0,2")
 
-st.header("Ejemplo teórico")
-st.write("Supongamos que tenemos un codificador con tasa R=1/2 y memoria 2.")
+    if st.button("Codificar/Decodificar"):
+        # Validación
+        if not all(c in '01' for c in user_bits):
+            st.error("¡Entrada inválida! Solo se permiten 0s y 1s.")
+            return
 
-input_bits = st.text_input("Ingrese la secuencia de bits de entrada (Ej: 1011)", "1011")
+        # Codificación
+        coded = convolutional_encode(user_bits, poly1, poly2)
+        original_coded = coded
 
-if st.button("Codificar y visualizar Trellis"):
-    bits = [int(b) for b in input_bits]
-    g1 = [1, 1, 1]
-    g2 = [1, 0, 1]
-    encoded_bits = convolutional_encode(bits, g1, g2)
-    st.write("Bits codificados:", ''.join(map(str, encoded_bits)))
-    draw_trellis_animated(bits)
+        # Simular errores si se desea
+        if error_sim:
+            coded_list = list(coded)
+            try:
+                positions = [int(p) for p in error_pos.split(',')]
+            except ValueError:
+                positions = []
+            for pos in positions:
+                if 0 <= pos < len(coded_list):
+                    coded_list[pos] = '1' if coded_list[pos] == '0' else '0'
+            coded = "".join(coded_list)
 
+        # Decodificación
+        decoded = viterbi_decode(coded, poly1, poly2)
 
+        # Muestra de resultados
+        st.subheader("Resultados")
+        col_res1, col_res2, col_res3 = st.columns(3)
+        col_res1.metric("Secuencia codificada", coded)
+        col_res2.metric("Secuencia decodificada", decoded)
+        col_res3.metric("Entrada original", user_bits)
 
+        # Mensaje final
+        if decoded == user_bits:
+            st.success("Decodificación correcta (coincide)!")
+        else:
+            st.warning("La decodificación no coincide con la entrada original.")
 
-
-
-
-
-
-
-
-
-
-
-
+if __name__ == "__main__":
+    main()
